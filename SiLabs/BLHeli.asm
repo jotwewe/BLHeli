@@ -1285,6 +1285,13 @@ Tx_Pgm_Func_No:			DS	1		; Function number when doing programming by tx
 Tx_Pgm_Paraval_No:			DS	1		; Parameter value number when doing programming by tx
 Tx_Pgm_Beep_No:			DS	1		; Beep number when doing programming by tx
 
+u8PWM_On:      DS 1
+u8PWM_Offset:  DS 1
+u8Random:      DS 1
+u8ElPerCnt:    DS 1
+u8ElPerCntSub: DS 1
+u8JitterBits:  DS 1
+
 ; Indirect addressing data segment
 ISEG AT 080h					
 Pgm_Gov_P_Gain:			DS	1		; Programmed governor P gain
@@ -1538,7 +1545,36 @@ t0_int_pwm_off:
 	All_nFETs_Off 					; Switch off all nfets early during direct start, for a smooth start
 t0_int_pwm_off_start_checked:
 	; Pwm off cycle
-	mov	TL0, Current_Pwm_Limited		; Load new timer setting
+        
+          ; Fixed frequency or jitter?
+          mov    A, u8ElPerCnt
+          jnb    ACC.3, t0_int_jitter
+
+          ; Fixed frequency PWM. Should sound like original BLHeli.
+          mov    A, Current_PWM_Limited
+          mov    TL0, A
+          mov    u8PWM_On, A
+          jmp    t0_int_jitter_end
+
+t0_int_jitter:
+          ; PWM with frequency jitter.
+          push   B
+          mov    A, u8Random
+          anl    A, u8JitterBits
+          
+          mov    u8PWM_Offset, A
+          cpl    A                                       ; cpl is 255-x
+          mov    B, Current_Pwm_Limited
+          mul    AB
+          mov    u8PWM_On, B
+          
+          mov    A, u8PWM_Offset
+          add    A, B
+          pop    B
+          
+          mov    TL0, A                                  ; Load new timer setting
+t0_int_jitter_end:                  
+                
 	; Clear pwm on flag
 	clr	Flags0.PWM_ON	
 	; Set full PWM (on all the time) if current PWM near max. This will give full power, but at the cost of a small "jump" in power
@@ -1804,7 +1840,7 @@ pwm_cnfet_bpfet_on_safe:	; Pwm on cycle cnfet on (anfet off) and bpfet on (used 
 
 t0_int_pwm_on_exit:
 	; Set timer for coming on cycle length
-	mov 	A, Current_Pwm_Limited		; Load current pwm
+	mov 	A, u8PWM_On
 	cpl	A						; cpl is 255-x
 	mov	TL0, A					; Write start point for timer
 	; Set other variables
@@ -3548,6 +3584,10 @@ check_temp_voltage_and_limit_power:
 	; Stop ADC
 	Stop_Adc
 
+          mov    A, u8Random
+          add    A, Temp1
+          mov    u8Random, A
+          
 	inc	Adc_Conversion_Cnt			; Increment conversion counter
 	clr	C
 	mov	A, Adc_Conversion_Cnt		; Is conversion count equal to temp rate?
@@ -3924,7 +3964,8 @@ calc_next_comm_slow:
 ; And has a separate entry point for just setting up zero cross scan wait
 ;
 ;**** **** **** **** **** **** **** **** **** **** **** **** ****
-wait_advance_timing:	
+wait_advance_timing:
+        inc     u8Random
 	jnb	Flags0.T3_PENDING, ($+5)
 	ajmp	wait_advance_timing
 
@@ -4082,6 +4123,7 @@ store_times_decrease:
 ;
 ;**** **** **** **** **** **** **** **** **** **** **** **** ****
 wait_before_zc_scan:	
+        inc     u8Random
 	jnb	Flags0.T3_PENDING, ($+5)
 	ajmp	wait_before_zc_scan
 
@@ -4122,6 +4164,8 @@ wait_for_comp_out_start:
 	inc	Comp_Wait_Reads
 	jb	Flags0.T3_PENDING, ($+4)		; Has zero cross scan timeout elapsed?
 	ret							; Yes - return
+
+        inc     u8Random
 
 	; Set default comparator response times
 	mov	CPT0MD, #0				; Set fast response (100ns) as default		
@@ -4185,6 +4229,7 @@ IF COMP1_USED==1
 ENDIF
 
 comp_wait_on_comp_able:
+        inc     u8Random
 	jb	Flags0.T3_PENDING, ($+6)		; Has zero cross scan timeout elapsed?
 	setb	EA						; Enable interrupts
 	ret							; Yes - return
@@ -4366,6 +4411,7 @@ wait_for_comm_power3:
 wait_for_comm_setup:
 	call	setup_comm_wait					; Setup commutation wait
 wait_for_comm_wait:
+        inc     u8Random
 	jnb	Flags0.DEMAG_CUT_POWER, ($+6)			; Cut motor power if set
 	mov	Current_Pwm_Limited, #0			
 	jnb Flags0.T3_PENDING, ($+5)				
@@ -5785,6 +5831,27 @@ run2:
 ; Run 3 = A(p-on) + B(n-pwm) - comparator C evaluated
 ; Out_cC changes from high to low
 run3:
+          ; Increment u8ElPerCntSub and u8ElPerCnt
+          inc    u8ElPerCntSub
+          mov    A, u8ElPerCntSub
+          jnz    run3_nicht_inc
+          inc    u8ElPerCnt
+          
+          ; periodically change u8JitterBits
+          mov    A, u8ElPerCnt
+          anl    A, #15              
+          jnz    run3_nicht_inc
+          ; 
+          mov    A, u8JitterBits
+          clr    C
+          rrc    A
+          mov    u8JitterBits, A
+          ; reset?
+          jnz    run3_nicht_inc
+          mov    A, #63
+          mov    u8JitterBits, A
+run3_nicht_inc:
+
 	call wait_for_comp_out_high
 	call	evaluate_comparator_integrity
 	call setup_comm_wait	
