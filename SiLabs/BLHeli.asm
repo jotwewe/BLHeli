@@ -3584,10 +3584,6 @@ check_temp_voltage_and_limit_power:
 	; Stop ADC
 	Stop_Adc
 
-          mov    A, u8Random
-          add    A, Temp1
-          mov    u8Random, A
-          
 	inc	Adc_Conversion_Cnt			; Increment conversion counter
 	clr	C
 	mov	A, Adc_Conversion_Cnt		; Is conversion count equal to temp rate?
@@ -3965,7 +3961,6 @@ calc_next_comm_slow:
 ;
 ;**** **** **** **** **** **** **** **** **** **** **** **** ****
 wait_advance_timing:
-        inc     u8Random
 	jnb	Flags0.T3_PENDING, ($+5)
 	ajmp	wait_advance_timing
 
@@ -4123,7 +4118,6 @@ store_times_decrease:
 ;
 ;**** **** **** **** **** **** **** **** **** **** **** **** ****
 wait_before_zc_scan:	
-        inc     u8Random
 	jnb	Flags0.T3_PENDING, ($+5)
 	ajmp	wait_before_zc_scan
 
@@ -4164,8 +4158,6 @@ wait_for_comp_out_start:
 	inc	Comp_Wait_Reads
 	jb	Flags0.T3_PENDING, ($+4)		; Has zero cross scan timeout elapsed?
 	ret							; Yes - return
-
-        inc     u8Random
 
 	; Set default comparator response times
 	mov	CPT0MD, #0				; Set fast response (100ns) as default		
@@ -4229,7 +4221,6 @@ IF COMP1_USED==1
 ENDIF
 
 comp_wait_on_comp_able:
-        inc     u8Random
 	jb	Flags0.T3_PENDING, ($+6)		; Has zero cross scan timeout elapsed?
 	setb	EA						; Enable interrupts
 	ret							; Yes - return
@@ -4411,7 +4402,6 @@ wait_for_comm_power3:
 wait_for_comm_setup:
 	call	setup_comm_wait					; Setup commutation wait
 wait_for_comm_wait:
-        inc     u8Random
 	jnb	Flags0.DEMAG_CUT_POWER, ($+6)			; Cut motor power if set
 	mov	Current_Pwm_Limited, #0			
 	jnb Flags0.T3_PENDING, ($+5)				
@@ -5803,6 +5793,7 @@ damped_transition:
 ; Run 1 = B(p-on) + C(n-pwm) - comparator A evaluated
 ; Out_cA changes from high to low
 run1:
+        call random_update    
 	call wait_for_comp_out_high	; Wait zero cross wait and wait for high
 	call	evaluate_comparator_integrity	; Check whether comparator reading has been normal
 	call setup_comm_wait		; Setup wait time from zero cross to commutation
@@ -5817,6 +5808,7 @@ run1:
 ; Run 2 = A(p-on) + C(n-pwm) - comparator B evaluated
 ; Out_cB changes from low to high
 run2:
+        call random_update    
 	call wait_for_comp_out_low
 	call	evaluate_comparator_integrity
 	call setup_comm_wait	
@@ -5852,6 +5844,7 @@ run3:
           mov    u8JitterBits, A
 run3_nicht_inc:
 
+        call random_update    
 	call wait_for_comp_out_high
 	call	evaluate_comparator_integrity
 	call setup_comm_wait	
@@ -5866,6 +5859,7 @@ run3_nicht_inc:
 ; Run 4 = C(p-on) + B(n-pwm) - comparator A evaluated
 ; Out_cA changes from low to high
 run4:
+        call random_update    
 	call wait_for_comp_out_low
 	call	evaluate_comparator_integrity
 	call setup_comm_wait	
@@ -5880,6 +5874,7 @@ run4:
 ; Run 5 = C(p-on) + A(n-pwm) - comparator B evaluated
 ; Out_cB changes from high to low
 run5:
+        call random_update    
 	call wait_for_comp_out_high
 	call	evaluate_comparator_integrity
 	call setup_comm_wait	
@@ -5894,6 +5889,7 @@ run5:
 ; Run 6 = B(p-on) + A(n-pwm) - comparator C evaluated
 ; Out_cC changes from low to high
 run6:
+        call random_update    
 	call wait_for_comp_out_low
 	call start_adc_conversion
 	call	evaluate_comparator_integrity
@@ -6074,7 +6070,9 @@ $include (BLHeliTxPgm.inc)		; Include source code for programming the ESC with t
 
 ;**** **** **** **** **** **** **** **** **** **** **** **** ****
 
-
+random_update:
+          inc    u8Random
+          ret          
 
 
 END
