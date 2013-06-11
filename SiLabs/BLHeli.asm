@@ -5213,6 +5213,8 @@ clear_ram:
 	; Set beep strength
 	mov	Temp1, #Pgm_Beep_Strength
 	mov	Beep_Strength, @Temp1
+        ;
+        mov     u8Random, @Temp1
 	; Switch power off
 	call	switch_power_off
 	; Timer control
@@ -6071,7 +6073,13 @@ $include (BLHeliTxPgm.inc)		; Include source code for programming the ESC with t
 ;**** **** **** **** **** **** **** **** **** **** **** **** ****
 
 random_update:
-          inc    u8Random
+          mov    A, u8Random
+          clr    C
+          rlc    A
+          jnc    _noXOR
+          xrl    A, #95 ; 2*47+1
+_noXOR:          
+          mov    u8Random, A
           ret          
 
 
