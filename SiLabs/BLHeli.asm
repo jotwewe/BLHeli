@@ -1288,6 +1288,7 @@ Tx_Pgm_Beep_No:			DS	1		; Beep number when doing programming by tx
 u8PWM_On:      DS 1
 u8PWM_Offset:  DS 1
 u8Random:      DS 1
+u8RandomH:     DS 1
 u8ElPerCnt:    DS 1
 u8ElPerCntSub: DS 1
 u8JitterBits:  DS 1
@@ -6072,15 +6073,22 @@ $include (BLHeliTxPgm.inc)		; Include source code for programming the ESC with t
 
 ;**** **** **** **** **** **** **** **** **** **** **** **** ****
 
+
+; c = [31744 32191 31530 31061 29246 32758]
+; bitand(c*2+1, 255)                          1   127    85   171   125   237
+; bitshift(c*2+1, -8)                       248   251   246   242   228   255
 random_update:
           mov    A, u8Random
           clr    C
           rlc    A
-          jnc    _noXOR
-          xrl    A, #95 ; 2*47+1
-_noXOR:          
           mov    u8Random, A
+          mov    A, u8RandomH
+          rlc    A
+          mov    u8RandomH, A
+          jnc    _noXOR
+          xrl    u8Random,  #1
+          xrl    u8RandomH, #248 
+_noXOR:          
           ret          
-
 
 END
