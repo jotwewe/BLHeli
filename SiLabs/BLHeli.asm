@@ -1289,9 +1289,6 @@ u8PWM_On:      DS 1
 u8PWM_Offset:  DS 1
 u8Random:      DS 1
 u8RandomH:     DS 1
-u8ElPerCnt:    DS 1
-u8ElPerCntSub: DS 1
-u8JitterBits:  DS 1
 
 ; Indirect addressing data segment
 ISEG AT 080h					
@@ -1547,21 +1544,10 @@ t0_int_pwm_off:
 t0_int_pwm_off_start_checked:
 	; Pwm off cycle
         
-          ; Fixed frequency or jitter?
-          mov    A, u8ElPerCnt
-          jnb    ACC.3, t0_int_jitter
-
-          ; Fixed frequency PWM. Should sound like original BLHeli.
-          mov    A, Current_PWM_Limited
-          mov    TL0, A
-          mov    u8PWM_On, A
-          jmp    t0_int_jitter_end
-
-t0_int_jitter:
           ; PWM with frequency jitter.
           push   B
           mov    A, u8Random
-          anl    A, u8JitterBits
+          anl    A, #31
           
           mov    u8PWM_Offset, A
           cpl    A                                       ; cpl is 255-x
@@ -1574,7 +1560,6 @@ t0_int_jitter:
           pop    B
           
           mov    TL0, A                                  ; Load new timer setting
-t0_int_jitter_end:                  
                 
 	; Clear pwm on flag
 	clr	Flags0.PWM_ON	
@@ -5214,7 +5199,7 @@ clear_ram:
 	; Set beep strength
 	mov	Temp1, #Pgm_Beep_Strength
 	mov	Beep_Strength, @Temp1
-        ;
+        ; Initial value of linear feedback shift register must not be zero!
         mov     u8Random, @Temp1
 	; Switch power off
 	call	switch_power_off
@@ -5826,27 +5811,6 @@ run2:
 ; Run 3 = A(p-on) + B(n-pwm) - comparator C evaluated
 ; Out_cC changes from high to low
 run3:
-          ; Increment u8ElPerCntSub and u8ElPerCnt
-          inc    u8ElPerCntSub
-          mov    A, u8ElPerCntSub
-          jnz    run3_nicht_inc
-          inc    u8ElPerCnt
-          
-          ; periodically change u8JitterBits
-          mov    A, u8ElPerCnt
-          anl    A, #15              
-          jnz    run3_nicht_inc
-          ; 
-          mov    A, u8JitterBits
-          clr    C
-          rrc    A
-          mov    u8JitterBits, A
-          ; reset?
-          jnz    run3_nicht_inc
-          mov    A, #63
-          mov    u8JitterBits, A
-run3_nicht_inc:
-
         call random_update    
 	call wait_for_comp_out_high
 	call	evaluate_comparator_integrity
@@ -6074,6 +6038,12 @@ $include (BLHeliTxPgm.inc)		; Include source code for programming the ESC with t
 ;**** **** **** **** **** **** **** **** **** **** **** **** ****
 
 
+;**** **** **** **** **** **** **** **** **** **** **** **** ****
+;
+; Update a linear feedback shift register which provides pseudo
+; random data for PWM frequency
+;
+;**** **** **** **** **** **** **** **** **** **** **** **** ****
 ; c = [31744 32191 31530 31061 29246 32758]
 ; bitand(c*2+1, 255)                          1   127    85   171   125   237
 ; bitshift(c*2+1, -8)                       248   251   246   242   228   255
